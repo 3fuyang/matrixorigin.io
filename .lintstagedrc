@@ -1,0 +1,3 @@
+{
+  "./docs/MatrixOne/**/*.md": ["node ./scripts/fixPunctuation", "npx markdownlint-cli2"]
+}

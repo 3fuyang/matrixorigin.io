@@ -71,21 +71,24 @@ main()
  * Main entry.
  */
 async function main() {
-  /** Relative Paths */
-  const relPaths = await glob(DOCS_PATTERN)
+  /** File paths passed by `lint-staged`. */
+  const lintStagedPaths = options.paths
+  /** Paths */
+  const paths = lintStagedPaths?.length ? lintStagedPaths : await glob(DOCS_PATTERN)
   /** Autofix or not. */
   const fix = options.fix ?? false
 
-  iterateFiles(relPaths, fixPunctuation, fix)
+  iterateFiles(paths, fixPunctuation, fix, lintStagedPaths?.length)
 }
 
 /**
  * Iterate docs.
- * @param {string[]} relPaths Relative paths of the docs.
+ * @param {string[]} paths Paths of the doc files, relative by default.
  * @param {Function} processer Utility to process the text content.
- * @param {boolean} fix Whether to autofix the content.
+ * @param {boolean} fix Whether to autofix the content, `false` by default.
+ * @param {boolean} absolute Whether the paths are absolute, `false` by default.
  */
-function iterateFiles(relPaths, processer, fix) {
+function iterateFiles(paths, processer, fix = false, absolute = false) {
   if (fix) {
     console.log(`Punctuation Linting (fix mode):`)
   } else {
@@ -100,11 +103,11 @@ function iterateFiles(relPaths, processer, fix) {
   let errFileCount = 0
   /** The total number of error(s). */
   let errCount = 0
-  for (const relPath of relPaths) {
-    const absPath = resolveAbsPath(relPath)
+  for (const path of paths) {
+    const absPath = absolute ? path : resolveAbsPath(path)
     const fileContent = readFileSync(absPath, { encoding: 'utf8' })
     if (!CHECKER_PATTERN.test(fileContent)) {
-      console.log(`[start] ${relPath} ✅`)
+      console.log(`[start] ${path} ✅`)
       continue
     }
     if (fix) {
@@ -112,7 +115,7 @@ function iterateFiles(relPaths, processer, fix) {
       writeFileSync(absPath, fixedContent)
       ++fixedFileCount
 
-      console.log(`[start] ${relPath} 🔧`)
+      console.log(`[start] ${path} 🔧`)
     } else {
       errFlag = true
       errFileCount++
@@ -120,14 +123,14 @@ function iterateFiles(relPaths, processer, fix) {
       const coordinates = coordinatesOfChars(CHECKER_PATTERN, fileContent)
       errCount += coordinates.length
 
-      console.log(`[start] ${relPath} ❌`)
+      console.log(`[start] ${path} ❌`)
       for (const [lineNumber, colNumber, char] of coordinates) {
-        console.log(`       📌 ${relPath}:${lineNumber}:${colNumber}\t${char}`)
+        console.log(`       📌 ${path}:${lineNumber}:${colNumber}\t${char}`)
       }
     }
   }
 
-  console.log(`Scanning: ${relPaths.length} file(s)`)
+  console.log(`Scanning: ${paths.length} file(s)`)
   console.log(`Finding: ${DOCS_PATTERN}`)
 
   if (!fix) {
@@ -149,7 +152,7 @@ function iterateFiles(relPaths, processer, fix) {
 
 /**
  * Resolve the absolute path of the argument.
- * @param {string} relPath
+ * @param {string} relPath The relative file path.
  * @returns {string} The absolute file path.
  */
 function resolveAbsPath(relPath) {
@@ -172,7 +175,7 @@ function fixPunctuation(content) {
  * Get coordinates of chars satisfying the given pattern from body of text.
  * @param {RegExp} pattern The pattern which the char matches.
  * @param {string} text Body of the text.
- * @returns A tuple of line number, column number and the char.
+ * @returns Coordinates consisting of the line number, the column number and the matched char.
  */
 function coordinatesOfChars(pattern, text) {
   const result = []
@@ -193,6 +196,20 @@ function coordinatesOfChars(pattern, text) {
 /**
  * Parse CLI arguments.
  * @param {Array<string>} argv
+ * @example
+ * ``` md
+ * When you run `node ./scripts/fixPunctuation --fix C:/dir/example-a.md C:/dir/subdir/example-b.md`,
+ * the suffixed args will be parsed as:
+ * ```
+ * ``` js
+ * {
+ *   fix: true,
+ *   paths: [
+ *     'C:/dir/example-a.md',
+ *     'C:/dir/subdir/example-b.md',
+ *   ]
+ * }
+ * ```
  */
 function parseArgv(argv) {
   const cpy = [...argv],
@@ -200,7 +217,11 @@ function parseArgv(argv) {
 
   while (cpy.length > 2) {
     const [flag] = cpy.splice(2, 1)
-    options[flag.slice(2)] = true
+    if (/^--/.test(flag)) {
+      options[flag.slice(2)] = true
+    } else {
+      options.paths ? options.paths.push(flag) : options.paths = [flag]
+    }
   }
 
   return options
